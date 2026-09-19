@@ -139,3 +139,13 @@ code {
     @apply bg-background text-foreground;
     }
 }
+@keyframes maalove-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.maalove-marquee {
+  animation: maalove-marquee 40s linear infinite;
+}
+.maalove-marquee:hover {
+  animation-play-state: paused;
+}

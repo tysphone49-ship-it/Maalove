@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Backend API Testing Script for Maalove
-Tests the NEW PROCESS CHANGE: men are NO LONGER auto-activated; every user needs admin validation
+Backend API Testing for Maalove
+Tests the CHANGE: videoPresentation is NO LONGER required for femmes in /api/verification/documents
 """
 
 import requests
@@ -9,559 +9,354 @@ import json
 import sys
 from datetime import datetime
 
-# Backend URL
+# Backend URL from .env
 BASE_URL = "https://euro-africa-match.preview.emergentagent.com/api"
 
-# Admin credentials
-ADMIN_EMAIL = "admin@maalove.com"
-ADMIN_PASSWORD = "admin123"
+def log(msg):
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
-# Test data
-HOMME_EMAIL = f"admin_validation_homme_{datetime.now().timestamp()}@test.com"
-FEMME_EMAIL = f"regression_femme_{datetime.now().timestamp()}@test.com"
-
-# Base64 test images
-PHOTO_BASE64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-SELFIE_BASE64 = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA=="
-VIDEO_BASE64 = "data:video/webm;base64,GkXfo0A"
-
-def print_test(step, description):
-    """Print test step header"""
+def test_step(step_num, description):
     print(f"\n{'='*80}")
-    print(f"STEP {step}: {description}")
+    print(f"STEP {step_num}: {description}")
     print('='*80)
 
-def print_result(success, message, status_code=None):
-    """Print test result"""
-    status = "✅ PASS" if success else "❌ FAIL"
-    if status_code:
-        print(f"{status} [HTTP {status_code}] {message}")
-    else:
-        print(f"{status} {message}")
-
-def test_step_1_seed():
-    """Step 1: POST /api/seed"""
-    print_test(1, "POST /api/seed")
+def main():
     try:
-        response = requests.post(f"{BASE_URL}/seed")
-        if response.status_code == 200:
-            data = response.json()
+        # STEP 1: POST /api/seed
+        test_step(1, "POST /api/seed")
+        resp = requests.post(f"{BASE_URL}/seed", timeout=10)
+        log(f"POST /api/seed -> HTTP {resp.status_code}")
+        if resp.status_code == 200:
+            data = resp.json()
+            log(f"✅ Response: {data}")
             if data.get('ok'):
-                print_result(True, "Seed endpoint returned {ok:true}", response.status_code)
-                return True
+                log("✅ PASS: Seed endpoint working")
             else:
-                print_result(False, f"Unexpected response: {data}", response.status_code)
+                log("❌ FAIL: Seed response missing 'ok' field")
                 return False
         else:
-            print_result(False, f"Expected 200, got {response.status_code}", response.status_code)
+            log(f"❌ FAIL: Expected HTTP 200, got {resp.status_code}")
             return False
-    except Exception as e:
-        print_result(False, f"Exception: {str(e)}")
-        return False
 
-def test_step_2_register_homme():
-    """Step 2: Register HOMME -> status should be 'en_attente'"""
-    print_test(2, "Register HOMME (unique email) -> status 'en_attente'")
-    try:
-        payload = {
-            "email": HOMME_EMAIL,
-            "password": "pass1234",
-            "prenom": "ValidHomme",
-            "genre": "homme",
-            "age": 33,
-            "ville": "Lyon",
-            "pays": "France"
-        }
-        response = requests.post(f"{BASE_URL}/auth/register", json=payload)
-        
-        if response.status_code == 200:
-            data = response.json()
-            token = data.get('token')
-            user = data.get('user')
-            
-            if not token or not user:
-                print_result(False, f"Missing token or user in response: {data}", response.status_code)
-                return None
-            
-            if user.get('status') == 'en_attente':
-                print_result(True, f"HOMME registered with status 'en_attente', token: {token[:20]}...", response.status_code)
-                return token
-            else:
-                print_result(False, f"Expected status 'en_attente', got '{user.get('status')}'", response.status_code)
-                return None
-        else:
-            print_result(False, f"Expected 200, got {response.status_code}: {response.text}", response.status_code)
-            return None
-    except Exception as e:
-        print_result(False, f"Exception: {str(e)}")
-        return None
-
-def test_step_3_discover_pending(token):
-    """Step 3: GET /api/discover as homme (pending) -> MUST return 403"""
-    print_test(3, "GET /api/discover as homme (status en_attente) -> MUST return HTTP 403 (pending)")
-    try:
-        headers = {"Authorization": f"Bearer {token}"}
-        response = requests.get(f"{BASE_URL}/discover", headers=headers)
-        
-        if response.status_code == 403:
-            data = response.json()
-            print_result(True, f"Correctly returned 403 (pending): {data}", response.status_code)
-            return True
-        else:
-            print_result(False, f"Expected 403, got {response.status_code}: {response.text}", response.status_code)
-            return False
-    except Exception as e:
-        print_result(False, f"Exception: {str(e)}")
-        return False
-
-def test_step_4_submit_selfie(token):
-    """Step 4: POST /api/verification/selfie -> 200; GET /api/me must show status == 'en_verification' (NOT 'verifie')"""
-    print_test(4, "POST /api/verification/selfie -> 200; GET /api/me must show status == 'en_verification' (NOT 'verifie')")
-    try:
-        headers = {"Authorization": f"Bearer {token}"}
-        payload = {
-            "photo": PHOTO_BASE64,
-            "selfie": SELFIE_BASE64
-        }
-        response = requests.post(f"{BASE_URL}/verification/selfie", json=payload, headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            user = data.get('user')
-            
-            if not user:
-                print_result(False, f"Missing user in response: {data}", response.status_code)
-                return False
-            
-            # CRITICAL: Status must be 'en_verification' (NOT 'verifie')
-            if user.get('status') != 'en_verification':
-                print_result(False, f"Expected status 'en_verification', got '{user.get('status')}'", response.status_code)
-                return False
-            
-            # Verify selfie is present
-            if not user.get('selfie'):
-                print_result(False, f"Selfie field is empty in user object", response.status_code)
-                return False
-            
-            print_result(True, f"Selfie uploaded successfully, status changed to 'en_verification' (NOT 'verifie'), selfie present", response.status_code)
-            
-            # Double-check with GET /api/me
-            me_response = requests.get(f"{BASE_URL}/me", headers=headers)
-            if me_response.status_code == 200:
-                me_data = me_response.json()
-                me_user = me_data.get('user')
-                if me_user.get('status') == 'en_verification':
-                    print(f"   ✅ GET /api/me confirms: status='en_verification', selfie={'present' if me_user.get('selfie') else 'missing'}")
-                else:
-                    print_result(False, f"GET /api/me shows wrong status: '{me_user.get('status')}' (expected 'en_verification')", me_response.status_code)
-                    return False
-            
-            return True
-        else:
-            print_result(False, f"Expected 200, got {response.status_code}: {response.text}", response.status_code)
-            return False
-    except Exception as e:
-        print_result(False, f"Exception: {str(e)}")
-        return False
-
-def test_step_5_discover_still_blocked(token):
-    """Step 5: GET /api/discover as homme again -> MUST STILL return 403 (not yet validated by admin)"""
-    print_test(5, "GET /api/discover as homme (status en_verification) -> MUST STILL return HTTP 403 (not yet validated by admin)")
-    try:
-        headers = {"Authorization": f"Bearer {token}"}
-        response = requests.get(f"{BASE_URL}/discover", headers=headers)
-        
-        if response.status_code == 403:
-            data = response.json()
-            print_result(True, f"Correctly STILL returned 403 (pending admin validation): {data}", response.status_code)
-            return True
-        else:
-            print_result(False, f"Expected 403, got {response.status_code}: {response.text}", response.status_code)
-            return False
-    except Exception as e:
-        print_result(False, f"Exception: {str(e)}")
-        return False
-
-def test_step_6_admin_verifications(homme_token):
-    """Step 6: Admin GET /api/admin/verifications -> the homme must appear (status en_verification, non-empty selfie)"""
-    print_test(6, "Admin GET /api/admin/verifications -> homme must appear (status en_verification, non-empty selfie)")
-    
-    # First, admin login
-    try:
-        payload = {
-            "email": ADMIN_EMAIL,
-            "password": ADMIN_PASSWORD
-        }
-        response = requests.post(f"{BASE_URL}/auth/login", json=payload)
-        
-        if response.status_code != 200:
-            print_result(False, f"Admin login failed: {response.status_code}", response.status_code)
-            return None
-        
-        data = response.json()
-        admin_token = data.get('token')
-        print(f"   ✅ Admin logged in successfully")
-        
-    except Exception as e:
-        print_result(False, f"Admin login exception: {str(e)}")
-        return None
-    
-    # Get homme user ID
-    try:
-        me_response = requests.get(f"{BASE_URL}/me", headers={"Authorization": f"Bearer {homme_token}"})
-        if me_response.status_code != 200:
-            print_result(False, f"Could not get homme user ID", me_response.status_code)
-            return None
-        
-        homme_user = me_response.json().get('user')
-        homme_id = homme_user.get('id')
-        
-    except Exception as e:
-        print_result(False, f"Exception getting homme ID: {str(e)}")
-        return None
-    
-    # Admin GET /api/admin/verifications
-    try:
-        headers = {"Authorization": f"Bearer {admin_token}"}
-        response = requests.get(f"{BASE_URL}/admin/verifications", headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            users = data.get('users', [])
-            
-            # Find the homme in the list
-            homme_in_list = None
-            for u in users:
-                if u.get('id') == homme_id:
-                    homme_in_list = u
-                    break
-            
-            if not homme_in_list:
-                print_result(False, f"Homme NOT found in admin verifications list (expected to be there)", response.status_code)
-                return None
-            
-            # Check status is 'en_verification'
-            if homme_in_list.get('status') != 'en_verification':
-                print_result(False, f"Homme status is '{homme_in_list.get('status')}' (expected 'en_verification')", response.status_code)
-                return None
-            
-            # Check selfie is non-empty
-            if not homme_in_list.get('selfie'):
-                print_result(False, f"Homme selfie is empty in admin verifications list", response.status_code)
-                return None
-            
-            print_result(True, f"Homme appears in admin verifications list with status 'en_verification' and non-empty selfie", response.status_code)
-            return admin_token
-            
-        else:
-            print_result(False, f"Expected 200, got {response.status_code}: {response.text}", response.status_code)
-            return None
-    except Exception as e:
-        print_result(False, f"Exception: {str(e)}")
-        return None
-
-def test_step_7_admin_verify(admin_token, homme_token):
-    """Step 7: Admin POST /api/admin/verify {userId, decision:'verifie'} -> GET /api/me shows status 'verifie'"""
-    print_test(7, "Admin POST /api/admin/verify {userId, decision:'verifie'} -> GET /api/me shows status 'verifie'")
-    
-    # Get homme user ID
-    try:
-        me_response = requests.get(f"{BASE_URL}/me", headers={"Authorization": f"Bearer {homme_token}"})
-        if me_response.status_code != 200:
-            print_result(False, f"Could not get homme user ID", me_response.status_code)
-            return False
-        
-        homme_user = me_response.json().get('user')
-        homme_id = homme_user.get('id')
-        
-    except Exception as e:
-        print_result(False, f"Exception getting homme ID: {str(e)}")
-        return False
-    
-    # Admin verify
-    try:
-        headers = {"Authorization": f"Bearer {admin_token}"}
-        payload = {
-            "userId": homme_id,
-            "decision": "verifie"
-        }
-        response = requests.post(f"{BASE_URL}/admin/verify", json=payload, headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if not data.get('ok'):
-                print_result(False, f"Unexpected response: {data}", response.status_code)
-                return False
-            
-            print(f"   ✅ Admin verified user successfully")
-            
-            # Verify status changed to 'verifie'
-            me_check = requests.get(f"{BASE_URL}/me", headers={"Authorization": f"Bearer {homme_token}"})
-            if me_check.status_code == 200:
-                final_user = me_check.json().get('user')
-                if final_user.get('status') == 'verifie':
-                    print_result(True, f"GET /api/me confirms: status='verifie'", me_check.status_code)
-                    return True
-                else:
-                    print_result(False, f"Status not updated to 'verifie', got '{final_user.get('status')}'", me_check.status_code)
-                    return False
-            else:
-                print_result(False, f"GET /api/me failed: {me_check.status_code}", me_check.status_code)
-                return False
-        else:
-            print_result(False, f"Expected 200, got {response.status_code}: {response.text}", response.status_code)
-            return False
-    except Exception as e:
-        print_result(False, f"Exception: {str(e)}")
-        return False
-
-def test_step_8_discover_now_works(token):
-    """Step 8: GET /api/discover as homme -> NOW expect HTTP 200 with femme profiles"""
-    print_test(8, "GET /api/discover as homme (status verifie) -> NOW expect HTTP 200 with femme profiles")
-    try:
-        headers = {"Authorization": f"Bearer {token}"}
-        response = requests.get(f"{BASE_URL}/discover", headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            profiles = data.get('profiles', [])
-            print_result(True, f"Discover NOW works! Returned {len(profiles)} profiles", response.status_code)
-            
-            # Check if profiles are femmes
-            femme_count = sum(1 for p in profiles if p.get('genre') == 'femme')
-            print(f"   Found {femme_count} femme profiles out of {len(profiles)} total")
-            return True
-        else:
-            print_result(False, f"Expected 200, got {response.status_code}: {response.text}", response.status_code)
-            return False
-    except Exception as e:
-        print_result(False, f"Exception: {str(e)}")
-        return False
-
-def test_step_9_women_flow_regression():
-    """Step 9: Regression test - women double-validation flow"""
-    print_test(9, "REGRESSION: Women flow (register -> documents_requis -> submit docs -> en_verification -> admin verify -> verifie)")
-    
-    all_passed = True
-    
-    # 9a: Register FEMME -> status 'documents_requis'
-    print("\n   9a: Register FEMME -> status 'documents_requis'")
-    try:
-        payload = {
-            "email": FEMME_EMAIL,
-            "password": "pass1234",
-            "prenom": "RegressionFemme",
+        # STEP 2: Register FEMME (unique email)
+        test_step(2, "Register FEMME (unique email)")
+        femme_email = f"femme_video_removed_{datetime.now().timestamp()}@maalove.test"
+        femme_data = {
+            "email": femme_email,
+            "password": "test1234",
+            "prenom": "VideoRemovedFemme",
             "genre": "femme",
             "age": 28,
             "ville": "Douala",
-            "pays": "Cameroun"
+            "pays": "Cameroun",
+            "photo": "https://images.unsplash.com/photo-1534470717-233b39a41c54?w=400"
         }
-        response = requests.post(f"{BASE_URL}/auth/register", json=payload)
-        
-        if response.status_code == 200:
-            data = response.json()
+        resp = requests.post(f"{BASE_URL}/auth/register", json=femme_data, timeout=10)
+        log(f"POST /api/auth/register -> HTTP {resp.status_code}")
+        if resp.status_code == 200:
+            data = resp.json()
             femme_token = data.get('token')
-            user = data.get('user')
-            
-            if user.get('status') == 'documents_requis':
-                print_result(True, f"FEMME registered with status 'documents_requis'", response.status_code)
+            femme_id = data.get('user', {}).get('id')
+            status = data.get('user', {}).get('status')
+            log(f"✅ Femme registered: id={femme_id}, status={status}")
+            if status == 'documents_requis':
+                log("✅ PASS: Femme status correctly set to 'documents_requis'")
             else:
-                print_result(False, f"Expected status 'documents_requis', got '{user.get('status')}'", response.status_code)
-                all_passed = False
+                log(f"❌ FAIL: Expected status 'documents_requis', got '{status}'")
                 return False
         else:
-            print_result(False, f"Expected 200, got {response.status_code}", response.status_code)
-            all_passed = False
+            log(f"❌ FAIL: Expected HTTP 200, got {resp.status_code}")
+            log(f"Response: {resp.text}")
             return False
-    except Exception as e:
-        print_result(False, f"Exception: {str(e)}")
-        return False
-    
-    # 9b: POST /api/verification/documents with all required fields
-    print("\n   9b: POST /api/verification/documents -> status 'en_verification'")
-    try:
-        headers = {"Authorization": f"Bearer {femme_token}"}
-        payload = {
-            "pieceIdentite": PHOTO_BASE64,
+
+        # STEP 3: POST /api/verification/documents with NO video and NO pieceIdentite
+        test_step(3, "POST /api/verification/documents (NO video, NO pieceIdentite)")
+        docs_data = {
             "moyenPaiement": "MoMo Money",
-            "referencePaiement": "MP7",
-            "videoPresentation": VIDEO_BASE64,
-            "phraseVideo": "test"
+            "referencePaiement": "MP99",
+            "forfaitMois": 6,
+            "forfaitCoach": True,
+            "forfaitMontant": 90000
         }
-        response = requests.post(f"{BASE_URL}/verification/documents", json=payload, headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            user = data.get('user')
+        headers = {"Authorization": f"Bearer {femme_token}"}
+        resp = requests.post(f"{BASE_URL}/verification/documents", json=docs_data, headers=headers, timeout=10)
+        log(f"POST /api/verification/documents -> HTTP {resp.status_code}")
+        if resp.status_code == 200:
+            data = resp.json()
+            log(f"✅ Response: {json.dumps(data, indent=2)}")
+            log("✅ PASS: Documents submitted successfully WITHOUT video and WITHOUT pieceIdentite")
             
-            if user.get('status') == 'en_verification':
-                print_result(True, f"Documents submitted, status changed to 'en_verification'", response.status_code)
-            else:
-                print_result(False, f"Expected status 'en_verification', got '{user.get('status')}'", response.status_code)
-                all_passed = False
-        else:
-            print_result(False, f"Expected 200, got {response.status_code}: {response.text}", response.status_code)
-            all_passed = False
-    except Exception as e:
-        print_result(False, f"Exception: {str(e)}")
-        all_passed = False
-    
-    # 9c: Admin login
-    print("\n   9c: Admin login")
-    try:
-        payload = {
-            "email": ADMIN_EMAIL,
-            "password": ADMIN_PASSWORD
-        }
-        response = requests.post(f"{BASE_URL}/auth/login", json=payload)
-        
-        if response.status_code == 200:
-            data = response.json()
-            admin_token = data.get('token')
-            print_result(True, f"Admin logged in successfully", response.status_code)
-        else:
-            print_result(False, f"Expected 200, got {response.status_code}", response.status_code)
-            all_passed = False
-            return False
-    except Exception as e:
-        print_result(False, f"Exception: {str(e)}")
-        return False
-    
-    # 9d: Admin verify user
-    print("\n   9d: Admin POST /api/admin/verify with decision 'verifie'")
-    try:
-        headers = {"Authorization": f"Bearer {admin_token}"}
-        
-        # First get the user ID from /me endpoint using femme token
-        me_response = requests.get(f"{BASE_URL}/me", headers={"Authorization": f"Bearer {femme_token}"})
-        if me_response.status_code == 200:
-            femme_user = me_response.json().get('user')
-            femme_id = femme_user.get('id')
-            
-            payload = {
-                "userId": femme_id,
-                "decision": "verifie"
-            }
-            response = requests.post(f"{BASE_URL}/admin/verify", json=payload, headers=headers)
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('ok'):
-                    print_result(True, f"Admin verified user successfully", response.status_code)
-                    
-                    # Verify status changed to 'verifie'
-                    me_check = requests.get(f"{BASE_URL}/me", headers={"Authorization": f"Bearer {femme_token}"})
-                    if me_check.status_code == 200:
-                        final_user = me_check.json().get('user')
-                        if final_user.get('status') == 'verifie':
-                            print(f"   GET /api/me confirms: status='verifie'")
-                        else:
-                            print_result(False, f"Status not updated to 'verifie', got '{final_user.get('status')}'", me_check.status_code)
-                            all_passed = False
+            # Verify status changed to 'en_verification'
+            resp_me = requests.get(f"{BASE_URL}/me", headers=headers, timeout=10)
+            log(f"GET /api/me -> HTTP {resp_me.status_code}")
+            if resp_me.status_code == 200:
+                me_data = resp_me.json()
+                me_status = me_data.get('user', {}).get('status')
+                log(f"Current status: {me_status}")
+                if me_status == 'en_verification':
+                    log("✅ PASS: Status correctly changed to 'en_verification'")
                 else:
-                    print_result(False, f"Unexpected response: {data}", response.status_code)
-                    all_passed = False
+                    log(f"❌ FAIL: Expected status 'en_verification', got '{me_status}'")
+                    return False
             else:
-                print_result(False, f"Expected 200, got {response.status_code}: {response.text}", response.status_code)
-                all_passed = False
+                log(f"❌ FAIL: GET /api/me returned HTTP {resp_me.status_code}")
+                return False
         else:
-            print_result(False, f"Could not get femme user ID", me_response.status_code)
-            all_passed = False
-    except Exception as e:
-        print_result(False, f"Exception: {str(e)}")
-        all_passed = False
-    
-    return all_passed
-
-def test_step_10_conversations_no_500(token):
-    """Step 10: No 500 on /api/conversations"""
-    print_test(10, "No 500 on /api/conversations")
-    try:
-        headers = {"Authorization": f"Bearer {token}"}
-        response = requests.get(f"{BASE_URL}/conversations", headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            conversations = data.get('conversations', [])
-            print_result(True, f"Conversations endpoint working correctly (no 500), returned {len(conversations)} conversations", response.status_code)
-            return True
-        else:
-            print_result(False, f"Expected 200, got {response.status_code}: {response.text}", response.status_code)
+            log(f"❌ FAIL: Expected HTTP 200, got {resp.status_code}")
+            log(f"Response: {resp.text}")
             return False
-    except Exception as e:
-        print_result(False, f"Exception: {str(e)}")
-        return False
 
-def main():
-    """Run all tests"""
-    print("\n" + "="*80)
-    print("MAALOVE BACKEND API TESTING")
-    print("Testing: PROCESS CHANGE - men are NO LONGER auto-activated; every user needs admin validation")
-    print("="*80)
-    
-    results = {}
-    
-    # Step 1: Seed
-    results['step1'] = test_step_1_seed()
-    
-    # Step 2: Register HOMME -> status 'en_attente'
-    homme_token = test_step_2_register_homme()
-    results['step2'] = homme_token is not None
-    
-    if not homme_token:
-        print("\n❌ Cannot continue without homme token")
-        sys.exit(1)
-    
-    # Step 3: Discover as homme (pending) -> 403
-    results['step3'] = test_step_3_discover_pending(homme_token)
-    
-    # Step 4: Submit selfie -> status 'en_verification' (NOT 'verifie')
-    results['step4'] = test_step_4_submit_selfie(homme_token)
-    
-    # Step 5: Discover as homme (still pending) -> STILL 403
-    results['step5'] = test_step_5_discover_still_blocked(homme_token)
-    
-    # Step 6: Admin GET /admin/verifications -> homme appears
-    admin_token = test_step_6_admin_verifications(homme_token)
-    results['step6'] = admin_token is not None
-    
-    if not admin_token:
-        print("\n❌ Cannot continue without admin token")
-        sys.exit(1)
-    
-    # Step 7: Admin verify -> status 'verifie'
-    results['step7'] = test_step_7_admin_verify(admin_token, homme_token)
-    
-    # Step 8: Discover as homme (verified) -> NOW 200
-    results['step8'] = test_step_8_discover_now_works(homme_token)
-    
-    # Step 9: Women flow regression
-    results['step9'] = test_step_9_women_flow_regression()
-    
-    # Step 10: No 500 on /api/conversations
-    results['step10'] = test_step_10_conversations_no_500(homme_token)
-    
-    # Summary
-    print("\n" + "="*80)
-    print("TEST SUMMARY")
-    print("="*80)
-    
-    total = len(results)
-    passed = sum(1 for v in results.values() if v)
-    failed = total - passed
-    
-    for step, result in results.items():
-        status = "✅ PASS" if result else "❌ FAIL"
-        print(f"{status} - {step}")
-    
-    print(f"\nTotal: {total} tests | Passed: {passed} | Failed: {failed}")
-    
-    if failed == 0:
-        print("\n🎉 ALL TESTS PASSED!")
-        sys.exit(0)
-    else:
-        print(f"\n⚠️  {failed} TEST(S) FAILED")
-        sys.exit(1)
+        # STEP 4a: Negative test - empty payload
+        test_step("4a", "NEGATIVE TEST: POST /api/verification/documents with empty payload {}")
+        femme2_email = f"femme_negative1_{datetime.now().timestamp()}@maalove.test"
+        femme2_data = {
+            "email": femme2_email,
+            "password": "test1234",
+            "prenom": "NegativeFemme1",
+            "genre": "femme",
+            "age": 25,
+            "ville": "Yaounde"
+        }
+        resp = requests.post(f"{BASE_URL}/auth/register", json=femme2_data, timeout=10)
+        if resp.status_code == 200:
+            femme2_token = resp.json().get('token')
+            headers2 = {"Authorization": f"Bearer {femme2_token}"}
+            
+            # Try to submit with empty payload
+            resp = requests.post(f"{BASE_URL}/verification/documents", json={}, headers=headers2, timeout=10)
+            log(f"POST /api/verification/documents (empty payload) -> HTTP {resp.status_code}")
+            if resp.status_code == 400:
+                error_msg = resp.json().get('error', '')
+                log(f"✅ PASS: Correctly rejected with HTTP 400")
+                log(f"Error message: {error_msg}")
+            else:
+                log(f"❌ FAIL: Expected HTTP 400, got {resp.status_code}")
+                return False
+        else:
+            log(f"❌ FAIL: Could not register femme2 for negative test")
+            return False
+
+        # STEP 4b: Negative test - only moyenPaiement, no ref/preuve
+        test_step("4b", "NEGATIVE TEST: POST /api/verification/documents with only moyenPaiement")
+        femme3_email = f"femme_negative2_{datetime.now().timestamp()}@maalove.test"
+        femme3_data = {
+            "email": femme3_email,
+            "password": "test1234",
+            "prenom": "NegativeFemme2",
+            "genre": "femme",
+            "age": 26,
+            "ville": "Douala"
+        }
+        resp = requests.post(f"{BASE_URL}/auth/register", json=femme3_data, timeout=10)
+        if resp.status_code == 200:
+            femme3_token = resp.json().get('token')
+            headers3 = {"Authorization": f"Bearer {femme3_token}"}
+            
+            # Try to submit with only moyenPaiement
+            resp = requests.post(f"{BASE_URL}/verification/documents", json={"moyenPaiement": "Orange Money"}, headers=headers3, timeout=10)
+            log(f"POST /api/verification/documents (only moyenPaiement) -> HTTP {resp.status_code}")
+            if resp.status_code == 400:
+                error_msg = resp.json().get('error', '')
+                log(f"✅ PASS: Correctly rejected with HTTP 400")
+                log(f"Error message: {error_msg}")
+            else:
+                log(f"❌ FAIL: Expected HTTP 400, got {resp.status_code}")
+                return False
+        else:
+            log(f"❌ FAIL: Could not register femme3 for negative test")
+            return False
+
+        # STEP 5: Admin GET /api/admin/verifications
+        test_step(5, "Admin GET /api/admin/verifications")
+        # Login as admin
+        admin_login = {"email": "admin@maalove.com", "password": "admin123"}
+        resp = requests.post(f"{BASE_URL}/auth/login", json=admin_login, timeout=10)
+        log(f"POST /api/auth/login (admin) -> HTTP {resp.status_code}")
+        if resp.status_code == 200:
+            admin_token = resp.json().get('token')
+            admin_headers = {"Authorization": f"Bearer {admin_token}"}
+            
+            # Get verifications list
+            resp = requests.get(f"{BASE_URL}/admin/verifications", headers=admin_headers, timeout=10)
+            log(f"GET /api/admin/verifications -> HTTP {resp.status_code}")
+            if resp.status_code == 200:
+                data = resp.json()
+                users = data.get('users', [])
+                log(f"Found {len(users)} users in verification queue")
+                
+                # Find our femme
+                femme_found = None
+                for u in users:
+                    if u.get('id') == femme_id:
+                        femme_found = u
+                        break
+                
+                if femme_found:
+                    log(f"✅ Femme found in verification list")
+                    log(f"forfaitMois: {femme_found.get('forfaitMois')}")
+                    log(f"forfaitCoach: {femme_found.get('forfaitCoach')}")
+                    log(f"forfaitMontant: {femme_found.get('forfaitMontant')}")
+                    
+                    if (femme_found.get('forfaitMois') == 6 and 
+                        femme_found.get('forfaitCoach') == True and 
+                        femme_found.get('forfaitMontant') == 90000):
+                        log("✅ PASS: All forfait fields correct (forfaitMois==6, forfaitCoach==true, forfaitMontant==90000)")
+                    else:
+                        log(f"❌ FAIL: Forfait fields mismatch")
+                        return False
+                else:
+                    log(f"❌ FAIL: Femme not found in verification list")
+                    return False
+            else:
+                log(f"❌ FAIL: Expected HTTP 200, got {resp.status_code}")
+                return False
+        else:
+            log(f"❌ FAIL: Admin login failed with HTTP {resp.status_code}")
+            return False
+
+        # STEP 6: REGRESSION - Men selfie flow
+        test_step(6, "REGRESSION: Men selfie flow (register -> selfie -> en_verification -> admin verify -> verifie -> discover 200)")
+        
+        # Register homme
+        homme_email = f"homme_regression_{datetime.now().timestamp()}@maalove.test"
+        homme_data = {
+            "email": homme_email,
+            "password": "test1234",
+            "prenom": "RegressionHomme",
+            "genre": "homme",
+            "age": 35,
+            "ville": "Paris",
+            "pays": "France",
+            "photo": "https://images.unsplash.com/photo-1600603406200-5b2a104684ac?w=400"
+        }
+        resp = requests.post(f"{BASE_URL}/auth/register", json=homme_data, timeout=10)
+        log(f"POST /api/auth/register (homme) -> HTTP {resp.status_code}")
+        if resp.status_code == 200:
+            homme_token = resp.json().get('token')
+            homme_id = resp.json().get('user', {}).get('id')
+            homme_status = resp.json().get('user', {}).get('status')
+            log(f"✅ Homme registered: id={homme_id}, status={homme_status}")
+            
+            if homme_status != 'en_attente':
+                log(f"❌ FAIL: Expected status 'en_attente', got '{homme_status}'")
+                return False
+            
+            homme_headers = {"Authorization": f"Bearer {homme_token}"}
+            
+            # Try discover before selfie (should be 403)
+            resp = requests.get(f"{BASE_URL}/discover", headers=homme_headers, timeout=10)
+            log(f"GET /api/discover (before selfie) -> HTTP {resp.status_code}")
+            if resp.status_code == 403:
+                log("✅ PASS: Discover correctly blocked before selfie")
+            else:
+                log(f"❌ FAIL: Expected HTTP 403, got {resp.status_code}")
+                return False
+            
+            # Submit selfie
+            selfie_data = {
+                "photo": "https://images.unsplash.com/photo-1600603406200-5b2a104684ac?w=400",
+                "selfie": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAA8A/9k="
+            }
+            resp = requests.post(f"{BASE_URL}/verification/selfie", json=selfie_data, headers=homme_headers, timeout=10)
+            log(f"POST /api/verification/selfie -> HTTP {resp.status_code}")
+            if resp.status_code == 200:
+                log("✅ Selfie submitted successfully")
+                
+                # Check status changed to en_verification
+                resp_me = requests.get(f"{BASE_URL}/me", headers=homme_headers, timeout=10)
+                if resp_me.status_code == 200:
+                    homme_status = resp_me.json().get('user', {}).get('status')
+                    log(f"Status after selfie: {homme_status}")
+                    if homme_status != 'en_verification':
+                        log(f"❌ FAIL: Expected status 'en_verification', got '{homme_status}'")
+                        return False
+                else:
+                    log(f"❌ FAIL: GET /api/me failed")
+                    return False
+                
+                # Try discover after selfie but before admin verify (should still be 403)
+                resp = requests.get(f"{BASE_URL}/discover", headers=homme_headers, timeout=10)
+                log(f"GET /api/discover (after selfie, before admin verify) -> HTTP {resp.status_code}")
+                if resp.status_code == 403:
+                    log("✅ PASS: Discover still blocked before admin verification")
+                else:
+                    log(f"❌ FAIL: Expected HTTP 403, got {resp.status_code}")
+                    return False
+                
+                # Admin verify
+                verify_data = {"userId": homme_id, "decision": "verifie"}
+                resp = requests.post(f"{BASE_URL}/admin/verify", json=verify_data, headers=admin_headers, timeout=10)
+                log(f"POST /api/admin/verify -> HTTP {resp.status_code}")
+                if resp.status_code == 200:
+                    log("✅ Admin verified homme")
+                    
+                    # Check status changed to verifie
+                    resp_me = requests.get(f"{BASE_URL}/me", headers=homme_headers, timeout=10)
+                    if resp_me.status_code == 200:
+                        homme_status = resp_me.json().get('user', {}).get('status')
+                        log(f"Status after admin verify: {homme_status}")
+                        if homme_status != 'verifie':
+                            log(f"❌ FAIL: Expected status 'verifie', got '{homme_status}'")
+                            return False
+                    else:
+                        log(f"❌ FAIL: GET /api/me failed")
+                        return False
+                    
+                    # Try discover after admin verify (should be 200)
+                    resp = requests.get(f"{BASE_URL}/discover", headers=homme_headers, timeout=10)
+                    log(f"GET /api/discover (after admin verify) -> HTTP {resp.status_code}")
+                    if resp.status_code == 200:
+                        profiles = resp.json().get('profiles', [])
+                        log(f"✅ PASS: Discover unlocked, found {len(profiles)} profiles")
+                    else:
+                        log(f"❌ FAIL: Expected HTTP 200, got {resp.status_code}")
+                        return False
+                else:
+                    log(f"❌ FAIL: Admin verify failed with HTTP {resp.status_code}")
+                    return False
+            else:
+                log(f"❌ FAIL: Selfie submission failed with HTTP {resp.status_code}")
+                return False
+        else:
+            log(f"❌ FAIL: Homme registration failed with HTTP {resp.status_code}")
+            return False
+
+        # STEP 6b: REGRESSION - GET /api/conversations (no 500)
+        test_step("6b", "REGRESSION: GET /api/conversations (no 500 errors)")
+        for i in range(3):
+            resp = requests.get(f"{BASE_URL}/conversations", headers=homme_headers, timeout=10)
+            log(f"GET /api/conversations (attempt {i+1}) -> HTTP {resp.status_code}")
+            if resp.status_code == 200:
+                log(f"✅ PASS: Conversations endpoint working (attempt {i+1})")
+            else:
+                log(f"❌ FAIL: Expected HTTP 200, got {resp.status_code}")
+                return False
+
+        # ALL TESTS PASSED
+        print("\n" + "="*80)
+        print("✅ ALL TESTS PASSED (100% SUCCESS RATE)")
+        print("="*80)
+        print("\nSUMMARY:")
+        print("✅ Step 1: POST /api/seed -> HTTP 200")
+        print("✅ Step 2: Register FEMME -> HTTP 200, status='documents_requis'")
+        print("✅ Step 3: POST /api/verification/documents (NO video, NO pieceIdentite) -> HTTP 200, status='en_verification'")
+        print("✅ Step 4a: NEGATIVE TEST (empty payload) -> HTTP 400")
+        print("✅ Step 4b: NEGATIVE TEST (only moyenPaiement) -> HTTP 400")
+        print("✅ Step 5: Admin GET /api/admin/verifications -> HTTP 200, forfait fields correct")
+        print("✅ Step 6: REGRESSION Men selfie flow -> All steps passed (register -> selfie -> en_verification -> admin verify -> verifie -> discover 200)")
+        print("✅ Step 6b: REGRESSION GET /api/conversations -> HTTP 200 (no 500 errors)")
+        print("\n✅ CHANGE CONFIRMED: videoPresentation is NO LONGER required for femmes")
+        print("✅ CHANGE CONFIRMED: pieceIdentite is NO LONGER required for femmes")
+        print("✅ All validation rules working correctly")
+        print("✅ All regression tests passed")
+        return True
+
+    except Exception as e:
+        log(f"❌ EXCEPTION: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 if __name__ == "__main__":
-    main()
+    success = main()
+    sys.exit(0 if success else 1)

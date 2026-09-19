@@ -19,7 +19,7 @@ import {
   Heart, ShieldCheck, Clock, MapPin, Send, Search, SlidersHorizontal, LogOut,
   MessageCircle, User, Users, Flag, Ban, CheckCircle2, XCircle, Sparkles,
   Globe, Briefcase, GraduationCap, Baby, Languages as LangIcon, ChevronRight, Menu, LayoutDashboard, LifeBuoy,
-  FileText, Upload, CreditCard, Camera, X, Plus, Mail, Video
+  FileText, Upload, CreditCard, Camera, X, Plus, Mail, Video, Phone, Trash2, Quote
 } from 'lucide-react'
 
 const PAYS = ['France', 'Cameroun', 'Belgique', 'Suisse', 'Canada']
@@ -30,6 +30,20 @@ const PROJET = ['Fonder une famille', 'Relation stable', "Ouverte à l'avenir"]
 const SITUATIONS = ['Célibataire', 'Divorcé(e)', 'Veuf(ve)']
 const ETUDES = ['Sans', 'Bac', 'Bac+2', 'Licence', 'Master', 'Doctorat', 'Formation pro']
 const INTERETS = ['Cuisine', 'Voyages', 'Musique', 'Sport', 'Lecture', 'Danse', 'Cinéma', 'Mode', 'Nature', 'Art', 'Photographie', 'Tech']
+
+const CONTACT_PHONE = '+33 6 74 48 08 36'
+const CONTACT_WA = '33674480836'
+const PAY_ORANGE = '694369571'
+const PAY_MOMO = '674346106'
+const FORFAIT_MOIS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+function forfaitMontant(mois, coach) { return (mois || 0) * (coach ? 15000 : 10000) }
+function fmtFCFA(n) { return (n || 0).toLocaleString('fr-FR') + ' FCFA' }
+function forfaitLabel(mois, coach) { return `${mois === 12 ? '1 an' : mois + ' mois'} · ${coach ? 'Avec coach' : 'Base'} · ${fmtFCFA(forfaitMontant(mois, coach))}` }
+
+function PayLogo({ type }) {
+  if (type === 'orange') return <img src="/orange-money.png" alt="Orange Money" className="h-9 w-auto rounded shrink-0" />
+  return <img src="/mtn-momo.png" alt="MTN MoMo" className="h-9 w-auto rounded shrink-0" />
+}
 
 const HERO_IMGS = [
   'https://images.unsplash.com/photo-1534470717-233b39a41c54?auto=format&fit=crop&w=500&q=80',
@@ -101,6 +115,9 @@ function Navbar({ me, view, setView, logout, unread, locked }) {
               <LayoutDashboard className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Admin</span>
             </Button>
           )}
+          <Button variant="ghost" size="sm" asChild>
+            <a href="/qui-sommes-nous"><Heart className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Qui sommes-nous</span></a>
+          </Button>
           {me ? (
             <Button variant="ghost" size="sm" onClick={logout}><LogOut className="h-4 w-4" /></Button>
           ) : (
@@ -113,9 +130,23 @@ function Navbar({ me, view, setView, logout, unread, locked }) {
 }
 
 /* ---------------- LANDING ---------------- */
-function Landing({ setView }) {
+function Landing({ setView, api }) {
+  const [temoignages, setTemoignages] = useState([])
+  useEffect(() => { (async () => { const r = await api('/testimonials', 'GET'); setTemoignages(r.testimonials || []) })() }, [])
+  const waHref = `https://wa.me/${CONTACT_WA}`
+  const telHref = `tel:${CONTACT_WA}`
+  const loop = temoignages.length ? [...temoignages, ...temoignages] : []
   return (
     <div>
+      {/* Barre de contact */}
+      <div className="bg-rose-600 text-white text-sm">
+        <div className="container flex items-center justify-center gap-4 py-2 flex-wrap">
+          <a href={telHref} className="flex items-center gap-1.5 hover:underline"><Phone className="h-4 w-4" /> {CONTACT_PHONE}</a>
+          <span className="opacity-60">·</span>
+          <a href={waHref} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:underline"><MessageCircle className="h-4 w-4" /> WhatsApp</a>
+          <span className="opacity-80 hidden sm:inline">Appel · SMS · WhatsApp</span>
+        </div>
+      </div>
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-rose-50 via-white to-amber-50" />
         <div className="container relative grid lg:grid-cols-2 gap-10 items-center py-16 lg:py-24">
@@ -181,6 +212,45 @@ function Landing({ setView }) {
           <Button size="lg" className="mt-6 bg-white text-rose-600 hover:bg-rose-50" onClick={() => setView('auth')}>Commencer maintenant</Button>
         </div>
       </section>
+
+      {/* Témoignages défilants */}
+      {temoignages.length > 0 && (
+        <section className="py-12 bg-rose-50/50 overflow-hidden">
+          <h2 className="text-center text-2xl font-bold mb-8">Ils ont trouvé l'amour sur Maalove</h2>
+          <div className="relative w-full overflow-hidden">
+            <div className="flex gap-4 w-max maalove-marquee">
+              {loop.map((t, i) => (
+                <Card key={i} className="w-80 shrink-0 border-rose-100">
+                  <CardContent className="pt-5">
+                    <Quote className="h-6 w-6 text-rose-300 mb-2" />
+                    <p className="text-sm text-muted-foreground italic">« {t.message} »</p>
+                    <div className="flex items-center gap-3 mt-4">
+                      <Avatar className="h-10 w-10">{t.photo ? <AvatarImage src={t.photo} className="object-cover" /> : <AvatarFallback className="bg-rose-100 text-rose-500">{t.nom?.[0]}</AvatarFallback>}</Avatar>
+                      <span className="font-semibold text-sm">{t.nom}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Footer contact */}
+      <footer className="bg-slate-900 text-slate-300 py-8">
+        <div className="container flex flex-col sm:flex-row items-center justify-between gap-4">
+          <Logo height="h-8" />
+          <div className="flex items-center gap-4 text-sm">
+            <a href={telHref} className="flex items-center gap-1.5 hover:text-white"><Phone className="h-4 w-4" /> {CONTACT_PHONE}</a>
+            <a href={waHref} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-white"><MessageCircle className="h-4 w-4" /> WhatsApp</a>
+          </div>
+        </div>
+      </footer>
+
+      {/* Bouton WhatsApp flottant */}
+      <a href={waHref} target="_blank" rel="noreferrer" className="fixed bottom-5 right-5 z-50 bg-[#25D366] hover:bg-[#1ebe5b] text-white rounded-full h-14 w-14 flex items-center justify-center shadow-xl" title="Contactez-nous sur WhatsApp">
+        <MessageCircle className="h-7 w-7" />
+      </a>
     </div>
   )
 }
@@ -192,6 +262,30 @@ function AuthView({ onAuth, api }) {
   const [reg, setReg] = useState({ prenom: '', email: '', password: '', genre: '', age: '', ville: '', pays: '', photo: '' })
   const [photoPreview, setPhotoPreview] = useState('')
   const [login, setLogin] = useState({ email: '', password: '' })
+  const [forgotOpen, setForgotOpen] = useState(false)
+  const [resetStep, setResetStep] = useState(1)
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetCode, setResetCode] = useState('')
+  const [resetPw, setResetPw] = useState('')
+
+  const sendReset = async () => {
+    if (!resetEmail) { toast.error('Entrez votre email'); return }
+    setLoading(true)
+    await api('/auth/forgot-password', 'POST', { email: resetEmail })
+    setLoading(false)
+    toast.success('Si un compte existe, un code vient d\u2019\u00eatre envoy\u00e9 par email.')
+    setResetStep(2)
+  }
+  const doReset = async () => {
+    if (!resetCode || !resetPw) { toast.error('Code et nouveau mot de passe requis'); return }
+    setLoading(true)
+    const res = await api('/auth/reset-password', 'POST', { email: resetEmail, code: resetCode, password: resetPw })
+    setLoading(false)
+    if (res.error) { toast.error(res.error); return }
+    toast.success('Mot de passe r\u00e9initialis\u00e9. Vous pouvez vous connecter.')
+    setForgotOpen(false); setResetStep(1); setResetCode(''); setResetPw('')
+    setMode('login'); setLogin({ email: resetEmail, password: '' })
+  }
 
   const handlePhoto = async (e) => {
     const f = e.target.files?.[0]
@@ -276,7 +370,31 @@ function AuthView({ onAuth, api }) {
               <div><Label>Email</Label><Input type="email" value={login.email} onChange={e => setLogin({ ...login, email: e.target.value })} placeholder="vous@email.com" /></div>
               <div><Label>Mot de passe</Label><Input type="password" value={login.password} onChange={e => setLogin({ ...login, password: e.target.value })} placeholder="••••••••" /></div>
               <Button className="w-full bg-rose-500 hover:bg-rose-600" onClick={doLogin} disabled={loading}>{loading ? 'Connexion...' : 'Se connecter'}</Button>
-              <p className="text-xs text-center text-muted-foreground">Démo admin : admin@maalove.com / admin123</p>
+              <button type="button" className="text-xs text-rose-500 hover:underline block mx-auto" onClick={() => { setResetEmail(login.email); setResetStep(1); setForgotOpen(true) }}>Mot de passe oublié ?</button>
+
+              <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Mot de passe oublié</DialogTitle>
+                    <DialogDescription>
+                      {resetStep === 1 ? 'Entrez votre email : nous vous enverrons un code de réinitialisation.' : 'Entrez le code reçu par email et votre nouveau mot de passe.'}
+                    </DialogDescription>
+                  </DialogHeader>
+                  {resetStep === 1 ? (
+                    <div className="space-y-3">
+                      <div><Label>Email</Label><Input type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)} placeholder="vous@email.com" /></div>
+                      <Button className="w-full bg-rose-500 hover:bg-rose-600" onClick={sendReset} disabled={loading}>{loading ? 'Envoi...' : 'Envoyer le code'}</Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div><Label>Code reçu par email</Label><Input value={resetCode} onChange={e => setResetCode(e.target.value)} placeholder="123456" /></div>
+                      <div><Label>Nouveau mot de passe</Label><Input type="password" value={resetPw} onChange={e => setResetPw(e.target.value)} placeholder="••••••••" /></div>
+                      <Button className="w-full bg-rose-500 hover:bg-rose-600" onClick={doReset} disabled={loading}>{loading ? 'Validation...' : 'Réinitialiser'}</Button>
+                      <button type="button" className="text-xs text-muted-foreground hover:underline block mx-auto" onClick={() => setResetStep(1)}>Changer d'email / renvoyer un code</button>
+                    </div>
+                  )}
+                </DialogContent>
+              </Dialog>
             </TabsContent>
           </Tabs>
         </CardContent>
@@ -809,10 +927,25 @@ function VerifDetailDialog({ u, decide }) {
           </Section>
         )}
 
+        {u.genre === 'femme' && u.forfaitMois && (
+          <Section title="Forfait choisi">
+            <Row label="Durée" value={u.forfaitMois === 12 ? '1 an' : u.forfaitMois + ' mois'} />
+            <Row label="Option" value={u.forfaitCoach ? 'Avec coach' : 'Base'} />
+            <Row label="Montant" value={fmtFCFA(u.forfaitMontant)} />
+          </Section>
+        )}
+
         {u.genre === 'homme' && u.selfie && (
           <Section title="Vérification (selfie)">
             <a href={u.selfie} target="_blank" rel="noreferrer"><img src={u.selfie} alt="selfie" className="h-40 w-auto rounded border" /></a>
             <p className="text-[11px] text-muted-foreground mt-1">Selfie fourni pour comparaison avec la photo de profil.</p>
+          </Section>
+        )}
+
+        {u.decidedBy && (
+          <Section title="Historique de décision">
+            <Row label="Traité par" value={u.decidedBy} />
+            <Row label="Le" value={u.decidedAt ? new Date(u.decidedAt).toLocaleString('fr-FR') : ''} />
           </Section>
         )}
 
@@ -834,16 +967,28 @@ function Admin({ me, api }) {
   const [notifs, setNotifs] = useState([])
   const [notifEmail, setNotifEmail] = useState('')
   const [notifUnread, setNotifUnread] = useState(0)
+  const [decisions, setDecisions] = useState([])
+  const [temoignages, setTemoignages] = useState([])
+  const [tForm, setTForm] = useState({ nom: '', message: '', photo: '' })
 
   const loadAll = useCallback(async () => {
-    const [s, v, r, u, t, n] = await Promise.all([
-      api('/admin/stats', 'GET'), api('/admin/verifications', 'GET'), api('/admin/reports', 'GET'), api('/admin/users', 'GET'), api('/admin/tickets', 'GET'), api('/admin/notifications', 'GET'),
+    const [s, v, r, u, t, n, d, tm] = await Promise.all([
+      api('/admin/stats', 'GET'), api('/admin/verifications', 'GET'), api('/admin/reports', 'GET'), api('/admin/users', 'GET'), api('/admin/tickets', 'GET'), api('/admin/notifications', 'GET'), api('/admin/decisions', 'GET'), api('/testimonials', 'GET'),
     ])
     setStats(s.stats); setVerifs(v.users || []); setReports(r.reports || []); setUsers(u.users || []); setTickets(t.tickets || [])
     setNotifs(n.notifications || []); setNotifEmail(n.email || ''); setNotifUnread(n.unread || 0)
+    setDecisions(d.decisions || []); setTemoignages(tm.testimonials || [])
   }, [api])
 
   const markRead = async () => { await api('/admin/notifications/read', 'POST', {}); loadAll() }
+  const addTestimonial = async () => {
+    if (!tForm.message) { toast.error('Message requis'); return }
+    const res = await api('/admin/testimonials', 'POST', tForm)
+    if (res.error) { toast.error(res.error); return }
+    toast.success('Témoignage ajouté'); setTForm({ nom: '', message: '', photo: '' }); loadAll()
+  }
+  const deleteTestimonial = async (id) => { await api('/admin/testimonials', 'DELETE', { id }); loadAll() }
+  const tPhotoUpload = async (e) => { const f = e.target.files?.[0]; if (!f) return; const b64 = await fileToBase64(f); setTForm(prev => ({ ...prev, photo: b64 })) }
 
   useEffect(() => { loadAll() }, [])
 
@@ -883,6 +1028,8 @@ function Admin({ me, api }) {
           {canVerif && <TabsTrigger value="reports">Signalements ({reports.filter(r => r.status === 'ouvert').length})</TabsTrigger>}
           <TabsTrigger value="users">Utilisateurs</TabsTrigger>
           <TabsTrigger value="activite">Activité{notifUnread ? ` (${notifUnread})` : ''}</TabsTrigger>
+          {canVerif && <TabsTrigger value="historique">Historique</TabsTrigger>}
+          <TabsTrigger value="temoignages">Témoignages</TabsTrigger>
           {canSupport && <TabsTrigger value="tickets">Support ({tickets.filter(t => t.status === 'ouvert').length})</TabsTrigger>}
         </TabsList>
 
@@ -964,6 +1111,44 @@ function Admin({ me, api }) {
                   {!n.read && <span className="h-2 w-2 rounded-full bg-rose-500 shrink-0" />}
                 </CardContent>
               </Card>
+            ))}</div>}
+        </TabsContent>
+
+        {canVerif && <TabsContent value="historique" className="mt-4">
+          {decisions.length === 0 ? <p className="text-muted-foreground py-8 text-center">Aucune décision enregistrée</p>
+            : <div className="space-y-2">{decisions.map(d => (
+              <Card key={d.id}><CardContent className="py-3 flex items-center gap-3">
+                {d.decision === 'verifie' ? <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" /> : <XCircle className="h-5 w-5 text-red-600 shrink-0" />}
+                <div className="flex-1">
+                  <p className="text-sm"><b>{d.userPrenom}</b> ({d.userGenre}) — {d.decision === 'verifie' ? 'validé(e)' : 'rejeté(e)'}</p>
+                  <p className="text-xs text-muted-foreground">par {d.adminNom} · {d.at ? new Date(d.at).toLocaleString('fr-FR') : ''}</p>
+                </div>
+              </CardContent></Card>
+            ))}</div>}
+        </TabsContent>}
+
+        <TabsContent value="temoignages" className="mt-4">
+          <Card className="mb-4">
+            <CardHeader><CardTitle className="text-base">Ajouter un témoignage</CardTitle><CardDescription>Ils défilent en bas de la page d'accueil.</CardDescription></CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-3">
+                <label className="cursor-pointer">
+                  <Avatar className="h-14 w-14 border-2 border-rose-200">{tForm.photo ? <AvatarImage src={tForm.photo} className="object-cover" /> : <AvatarFallback className="bg-rose-100 text-rose-400"><Camera className="h-5 w-5" /></AvatarFallback>}</Avatar>
+                  <input type="file" accept="image/*" className="hidden" onChange={tPhotoUpload} />
+                </label>
+                <Input placeholder="Nom (ex: Aïcha & Julien)" value={tForm.nom} onChange={e => setTForm({ ...tForm, nom: e.target.value })} />
+              </div>
+              <Textarea rows={3} placeholder="Le témoignage..." value={tForm.message} onChange={e => setTForm({ ...tForm, message: e.target.value })} />
+              <Button className="bg-rose-500 hover:bg-rose-600" onClick={addTestimonial}><Plus className="h-4 w-4 mr-1" /> Publier le témoignage</Button>
+            </CardContent>
+          </Card>
+          {temoignages.length === 0 ? <p className="text-muted-foreground py-8 text-center">Aucun témoignage</p>
+            : <div className="grid sm:grid-cols-2 gap-3">{temoignages.map(t => (
+              <Card key={t.id}><CardContent className="py-4 flex gap-3">
+                <Avatar className="h-10 w-10">{t.photo ? <AvatarImage src={t.photo} className="object-cover" /> : <AvatarFallback>{t.nom?.[0]}</AvatarFallback>}</Avatar>
+                <div className="flex-1"><p className="font-medium text-sm">{t.nom}</p><p className="text-sm text-muted-foreground">« {t.message} »</p></div>
+                <Button variant="ghost" size="icon" className="text-red-600 shrink-0" onClick={() => deleteTestimonial(t.id)}><Trash2 className="h-4 w-4" /></Button>
+              </CardContent></Card>
             ))}</div>}
         </TabsContent>
 
@@ -1068,23 +1253,20 @@ function VideoRecorder({ phrase, onRecorded }) {
 }
 
 function DocumentsStep({ me, api, refreshMe, logout }) {
-  const [piece, setPiece] = useState('')
   const [preuve, setPreuve] = useState('')
   const [moyen, setMoyen] = useState('')
   const [ref, setRef] = useState('')
-  const [phrase] = useState(() => genPhrase(me?.prenom))
-  const [video, setVideo] = useState('')
+  const [forfaitMois, setForfaitMois] = useState(1)
+  const [forfaitCoach, setForfaitCoach] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const upl = (setter) => async (e) => { const f = e.target.files?.[0]; if (!f) return; setter(await fileToBase64(f)) }
 
   const submit = async () => {
-    if (!piece) { toast.error('Ajoutez votre pièce d\u2019identité'); return }
     if (!moyen) { toast.error('Choisissez le moyen de paiement'); return }
     if (!ref && !preuve) { toast.error('Ajoutez la référence OU la capture du paiement'); return }
-    if (!video) { toast.error('Enregistrez votre vidéo de présentation'); return }
     setLoading(true)
-    const res = await api('/verification/documents', 'POST', { pieceIdentite: piece, preuvePaiement: preuve, moyenPaiement: moyen, referencePaiement: ref, videoPresentation: video, phraseVideo: phrase })
+    const res = await api('/verification/documents', 'POST', { preuvePaiement: preuve, moyenPaiement: moyen, referencePaiement: ref, forfaitMois, forfaitCoach, forfaitMontant: forfaitMontant(forfaitMois, forfaitCoach) })
     setLoading(false)
     if (res.error) { toast.error(res.error); return }
     toast.success('Dossier envoyé ! Notre équipe va le vérifier.')
@@ -1110,7 +1292,7 @@ function DocumentsStep({ me, api, refreshMe, logout }) {
             <div className="bg-rose-100 rounded-full p-2 h-fit"><Mail className="h-5 w-5 text-rose-500" /></div>
             <div>
               <p className="font-semibold">Étape 2 — Vérification de votre dossier</p>
-              <p className="text-sm text-muted-foreground mt-1">Bonjour {me.prenom}, pour garantir des rencontres sûres, merci d'envoyer votre <b>pièce d'identité</b> et la <b>preuve de votre paiement</b> (MoMo Money ou Orange Money). Après validation par notre équipe, vous recevrez vos accès pour compléter votre profil.</p>
+              <p className="text-sm text-muted-foreground mt-1">Bonjour {me.prenom}, pour finaliser votre inscription, choisissez votre <b>forfait</b> et fournissez la <b>preuve de votre paiement</b> (MoMo Money ou Orange Money). Après validation par notre équipe, vous recevrez vos accès pour compléter votre profil.</p>
               <p className="text-xs text-rose-500 mt-2">(Email de notification simulé — en attente de la clé d'envoi)</p>
             </div>
           </CardContent>
@@ -1119,11 +1301,36 @@ function DocumentsStep({ me, api, refreshMe, logout }) {
         <Card>
           <CardHeader><CardTitle className="text-lg flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-rose-500" /> Vos documents</CardTitle></CardHeader>
           <CardContent className="space-y-5">
-            <UploadBox value={piece} onChange={upl(setPiece)} label="Pièce d'identité (CNI, passeport)" icon={FileText} />
-
-            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm">
-              <p className="font-medium flex items-center gap-1 text-amber-800"><CreditCard className="h-4 w-4" /> Frais de vérification</p>
-              <p className="text-amber-700 mt-1">Effectuez votre paiement via <b>MoMo Money</b> ou <b>Orange Money</b> au numéro communiqué, puis indiquez la référence ou joignez la capture ci-dessous.</p>
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm space-y-3">
+              <p className="font-medium flex items-center gap-1 text-amber-800"><CreditCard className="h-4 w-4" /> Choisissez votre forfait</p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Durée</Label>
+                  <Select value={String(forfaitMois)} onValueChange={v => setForfaitMois(parseInt(v))}>
+                    <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
+                    <SelectContent>{FORFAIT_MOIS.map(m => <SelectItem key={m} value={String(m)}>{m === 12 ? '1 an' : m + ' mois'}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Option</Label>
+                  <div className="flex gap-2 mt-1">
+                    <Button type="button" size="sm" variant={!forfaitCoach ? 'default' : 'outline'} className={!forfaitCoach ? 'bg-rose-500 hover:bg-rose-600' : 'bg-white'} onClick={() => setForfaitCoach(false)}>Base</Button>
+                    <Button type="button" size="sm" variant={forfaitCoach ? 'default' : 'outline'} className={forfaitCoach ? 'bg-rose-500 hover:bg-rose-600' : 'bg-white'} onClick={() => setForfaitCoach(true)}>Avec coach</Button>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg p-3 flex items-center justify-between">
+                <span className="text-muted-foreground">Montant à payer</span>
+                <span className="text-lg font-bold text-rose-600">{fmtFCFA(forfaitMontant(forfaitMois, forfaitCoach))}</span>
+              </div>
+              <div>
+                <p className="text-amber-800 font-medium mb-2">Payez le montant à l'un de ces numéros :</p>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3 bg-white rounded-lg p-2"><PayLogo type="orange" /><span className="font-semibold tracking-wide">{PAY_ORANGE}</span></div>
+                  <div className="flex items-center gap-3 bg-white rounded-lg p-2"><PayLogo type="momo" /><span className="font-semibold tracking-wide">{PAY_MOMO}</span></div>
+                </div>
+                <p className="text-amber-700 mt-2">Après paiement, indiquez la référence de la transaction ou joignez la capture ci-dessous.</p>
+              </div>
             </div>
 
             <div>
@@ -1141,8 +1348,6 @@ function DocumentsStep({ me, api, refreshMe, logout }) {
               <Input value={ref} onChange={e => setRef(e.target.value)} placeholder="Ex: MP240612.1534.A12345" />
             </div>
             <UploadBox value={preuve} onChange={upl(setPreuve)} label="OU capture d'écran du paiement (facultatif si référence fournie)" icon={Camera} />
-
-            <VideoRecorder phrase={phrase} onRecorded={setVideo} />
 
             <div className="flex gap-2">
               <Button className="bg-rose-500 hover:bg-rose-600 flex-1" onClick={submit} disabled={loading}>{loading ? 'Envoi...' : 'Envoyer mon dossier'}</Button>
@@ -1358,7 +1563,7 @@ function App() {
       {forced === 'rejected' && <RejectedScreen me={me} logout={logout} />}
       {forced === 'selfie' && <MenVerificationStep me={me} api={api} refreshMe={refreshMe} logout={logout} />}
       {!forced && <>
-        {view === 'landing' && <Landing setView={setView} />}
+        {view === 'landing' && <Landing setView={setView} api={api} />}
         {view === 'auth' && <AuthView onAuth={onAuth} api={api} />}
         {view === 'discover' && me && <Discover me={me} api={api} openProfile={openProfile} />}
         {view === 'profile' && profileId && <ProfileDetail profileId={profileId} api={api} back={() => setView('discover')} startChat={startChat} />}
